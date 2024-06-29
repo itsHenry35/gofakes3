@@ -115,7 +115,13 @@ func (g *GoFakeS3) DelAuthKeys(p []string) {
 func (g *GoFakeS3) authMiddleware(handler http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, rq *http.Request) {
 		if len(g.v4AuthPair) > 0 {
-			if result := signature.V4SignVerify(rq); result != signature.ErrNone {
+			result := signature.V4SignVerify(rq)
+
+			if result == signature.ErrUnsupportAlgorithm {
+				result = signature.V2SignVerify(rq)
+			}
+
+			if result != signature.ErrNone {
 				g.log.Print(LogWarn, "Access Denied:", rq.RemoteAddr, "=>", rq.URL)
 
 				resp := signature.GetAPIError(result)

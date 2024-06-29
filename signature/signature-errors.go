@@ -38,7 +38,7 @@ const (
 	errUnsignedHeaders
 	errMissingDateHeader
 	errMalformedDate
-	errUnsupportAlgorithm
+	ErrUnsupportAlgorithm
 	errSignatureDoesNotMatch
 
 	// ErrNone is None(err=nil)
@@ -108,7 +108,7 @@ var errorCodes = errorCodeMap{
 		Description:    "Invalid date format header, expected to be in ISO8601, RFC1123 or RFC1123Z time format.",
 		HTTPStatusCode: http.StatusBadRequest,
 	},
-	errUnsupportAlgorithm: {
+	ErrUnsupportAlgorithm: {
 		Code:           "UnsupportedAlgorithm",
 		Description:    "Encountered an unsupported algorithm.",
 		HTTPStatusCode: http.StatusBadRequest,

@@ -92,7 +92,7 @@ func extractFields(signElement, fieldName string) (string, ErrorCode) {
 func ParseSignV4(v4Auth string) (sv signValues, err ErrorCode) {
 
 	if !strings.HasPrefix(v4Auth, signV4Algorithm) {
-		return sv, errUnsupportAlgorithm
+		return sv, ErrUnsupportAlgorithm
 	}
 
 	rawCred := strings.ReplaceAll(strings.TrimPrefix(v4Auth, signV4Algorithm), " ", "")
