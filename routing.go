@@ -55,6 +55,9 @@ func (g *GoFakeS3) routeBase(w http.ResponseWriter, r *http.Request) {
 		err = g.routeVersion(bucket, object, VersionID(versionID), w, r)
 
 	} else if bucket != "" && object != "" {
+		if strings.HasSuffix(r.URL.Path, "/") {
+			object = object + "/"
+		}
 		err = g.routeObject(bucket, object, w, r)
 
 	} else if bucket != "" {
