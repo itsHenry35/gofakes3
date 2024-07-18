@@ -249,28 +249,30 @@ func (g *GoFakeS3) listBucket(bucketName string, w http.ResponseWriter, r *http.
 	objects, err := g.storage.ListBucket(ctx, bucketName, &prefix, page)
 	log.Debugf("objects.Contents: %v, prefix: %v", objects.Contents, prefix)
 
-	hasPrefixSelf := false
-	if objects.Contents != nil {
-		for _, v := range objects.Contents {
-			if v.Key == prefix.Prefix {
-				hasPrefixSelf = true
-				break
+	if strings.HasSuffix(prefix.Prefix, "/") {
+		hasPrefixSelf := false
+		if objects.Contents != nil {
+			for _, v := range objects.Contents {
+				if v.Key == prefix.Prefix {
+					hasPrefixSelf = true
+					break
+				}
 			}
 		}
-	}
 
-	if !hasPrefixSelf {
-		log.Infof("objects.Contents not has prefix self, need to add it.")
-		objects.Contents = append(objects.Contents, &Content{
-			Key:          prefix.Prefix,
-			LastModified: NewContentTime(time.Time{}),
-			ETag:         "",
-			Size:         0,
-			StorageClass: StorageStandard,
-			Owner:        nil,
-		})
+		if !hasPrefixSelf {
+			log.Debugf("objects.Contents not has prefix self, need to add it, prefix: %v", prefix)
+			objects.Contents = append(objects.Contents, &Content{
+				Key:          prefix.Prefix,
+				LastModified: NewContentTime(time.Time{}),
+				ETag:         "",
+				Size:         0,
+				StorageClass: StorageStandard,
+				Owner:        nil,
+			})
+		}
+		log.Debugf("objects.Contents: %v", objects.Contents)
 	}
-	log.Debugf("objects.Contents: %v", objects.Contents)
 
 	if err != nil {
 		if err == ErrInternalPageNotImplemented && !g.failOnUnimplementedPage {
