@@ -5,11 +5,12 @@ import (
 	"crypto/sha1"
 	"encoding/base64"
 	"fmt"
-	logger "github.com/sirupsen/logrus"
 	"net/http"
 	"net/url"
 	"sort"
 	"strings"
+
+	logger "github.com/sirupsen/logrus"
 )
 
 // ref: https://github.com/minio/minio/cmd/auth-handler.go
