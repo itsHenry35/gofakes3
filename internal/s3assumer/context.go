@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"math"
 	"math/rand"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
 
 type Context struct {
@@ -27,44 +29,37 @@ func (c *Context) RandBytes(sz int) []byte {
 	return out
 }
 
-func (c *Context) S3Client() *s3.S3 {
-	config := aws.NewConfig()
-	if c.config.S3Endpoint != "" {
-		config.WithEndpoint(c.config.S3Endpoint)
+func (c *Context) S3Client() *s3.Client {
+	var config = aws.Config{
+		Region: c.config.S3Region,
 	}
-	if c.config.S3PathStyle {
-		config.WithS3ForcePathStyle(c.config.S3PathStyle)
-	}
-	if c.config.S3Region != "" {
-		config.WithRegion(c.config.S3Region)
-	}
-
 	if c.config.Verbose {
-		var logger Logger
-		config.WithLogLevel(aws.LogDebugWithHTTPBody)
-		config.WithLogger(logger)
+		config.ClientLogMode = aws.ClientLogMode(math.MaxInt64)
 	}
-
-	ses, err := session.NewSession(config)
-	if err != nil {
-		panic(fmt.Sprintf("Session creation failed: %v", err))
-	}
-	svc := s3.New(ses)
+	svc := s3.NewFromConfig(config, func(o *s3.Options) {
+		o.BaseEndpoint = aws.String(c.config.S3Endpoint)
+		o.UsePathStyle = c.config.S3PathStyle
+		v := aws.Credentials{
+			AccessKeyID:     "dummy-access",
+			SecretAccessKey: "dummy-secret",
+		}
+		o.Credentials = &credentials.StaticCredentialsProvider{Value: v}
+	})
 	return svc
 }
 
-func (c *Context) EnsureVersioningEnabled(client *s3.S3, bucket string) error {
+func (c *Context) EnsureVersioningEnabled(client *s3.Client, bucket string) error {
 	vers, err := c.getBucketVersioning(client, bucket)
 	if err != nil {
 		return err
 	}
 
-	status := aws.StringValue(vers.Status)
+	status := vers.Status
 	if status != "Enabled" {
-		if _, err := client.PutBucketVersioning(&s3.PutBucketVersioningInput{
+		if _, err := client.PutBucketVersioning(c.Context, &s3.PutBucketVersioningInput{
 			Bucket: aws.String(bucket),
-			VersioningConfiguration: &s3.VersioningConfiguration{
-				Status: aws.String("Enabled"),
+			VersioningConfiguration: &types.VersioningConfiguration{
+				Status: "Enabled",
 			},
 		}); err != nil {
 			return err
@@ -74,32 +69,32 @@ func (c *Context) EnsureVersioningEnabled(client *s3.S3, bucket string) error {
 	return nil
 }
 
-func (c *Context) EnsureVersioningNeverEnabled(client *s3.S3, bucket string) error {
+func (c *Context) EnsureVersioningNeverEnabled(client *s3.Client, bucket string) error {
 	vers, err := c.getBucketVersioning(client, bucket)
 	if err != nil {
 		return err
 	}
 
-	if aws.StringValue(vers.Status) != "" {
-		return fmt.Errorf("unexpected status, found %q", aws.StringValue(vers.Status))
+	if vers.Status != "" {
+		return fmt.Errorf("unexpected status, found %q", vers.Status)
 	}
 
 	return nil
 }
 
-func (c *Context) getBucketVersioning(client *s3.S3, bucket string) (*s3.GetBucketVersioningOutput, error) {
-	vers, err := client.GetBucketVersioning(&s3.GetBucketVersioningInput{Bucket: aws.String(bucket)})
+func (c *Context) getBucketVersioning(client *s3.Client, bucket string) (*s3.GetBucketVersioningOutput, error) {
+	vers, err := client.GetBucketVersioning(c.Context, &s3.GetBucketVersioningInput{Bucket: aws.String(bucket)})
 	if err != nil {
 		return nil, err
 	}
 
-	status := aws.StringValue(vers.Status)
+	status := vers.Status
 	if status != "" && status != "Enabled" && status != "Suspended" {
 		return nil, fmt.Errorf("unexpected status %q", status)
 	}
-	mfaDelete := aws.StringValue(vers.MFADelete)
+	mfaDelete := vers.MFADelete
 	if mfaDelete != "" && mfaDelete != "Disabled" {
-		return nil, fmt.Errorf("unexpected MFADelete %q", aws.StringValue(vers.MFADelete))
+		return nil, fmt.Errorf("unexpected MFADelete %q", vers.MFADelete)
 	}
 
 	return vers, nil

@@ -1,5 +1,5 @@
 ---
-# Github Actions build for rclone/gofakes3
+# Github Actions build for itsHenry35/gofakes3
 # -*- compile-command: "yamllint -f parsable build.yml" -*-
 
 name: build
@@ -22,41 +22,41 @@ on:
 
 jobs:
   build:
-    if: ${{ github.event.inputs.manual == 'true' || (github.repository == 'rclone/gofakes3' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.event.pull_request.base.repo.full_name)) }}
+    if: ${{ github.event.inputs.manual == 'true' || (github.repository == 'itsHenry35/gofakes3' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.event.pull_request.base.repo.full_name)) }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        job_name: ['linux', 'linux_386', 'mac_amd64', 'mac_arm64', 'windows', 'go1.20', 'go1.21']
+        job_name: ['linux', 'linux_386', 'mac_amd64', 'mac_arm64', 'windows', 'go1.21', 'go1.22']
 
         include:
           - job_name: linux
             os: ubuntu-latest
-            go: '>=1.22.0-rc.1'
+            go: '1.23'
 
           - job_name: linux_386
             os: ubuntu-latest
-            go: '>=1.22.0-rc.1'
+            go: '1.23'
 
           - job_name: mac_amd64
             os: macos-latest
-            go: '>=1.22.0-rc.1'
+            go: '1.23'
 
           - job_name: mac_arm64
             os: macos-latest
-            go: '>=1.22.0-rc.1'
+            go: '1.23'
 
           - job_name: windows
             os: windows-latest
-            go: '>=1.22.0-rc.1'
-
-          - job_name: go1.20
-            os: ubuntu-latest
-            go: '1.20'
+            go: '1.23'
 
           - job_name: go1.21
             os: ubuntu-latest
             go: '1.21'
+
+          - job_name: go1.22
+            os: ubuntu-latest
+            go: '1.22'
 
     name: ${{ matrix.job_name }}
 
@@ -106,7 +106,7 @@ jobs:
           go test -race ./...
 
   lint:
-    if: ${{ github.event.inputs.manual == 'true' || (github.repository == 'rclone/gofakes3' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.event.pull_request.base.repo.full_name)) }}
+    if: ${{ github.event.inputs.manual == 'true' || (github.repository == 'itsHenry35/gofakes3' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.event.pull_request.base.repo.full_name)) }}
     timeout-minutes: 30
     name: "lint"
     runs-on: ubuntu-latest
@@ -125,7 +125,7 @@ jobs:
       - name: Install Go
         uses: actions/setup-go@v5
         with:
-          go-version: '>=1.22.0-rc.1'
+          go-version: '1.23'
           check-latest: true
 
       - name: Install govulncheck

@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"net/http"
 	"net/textproto"
@@ -17,10 +16,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	log "github.com/sirupsen/logrus"
-
 	"github.com/itsHenry35/gofakes3/signature"
-	xml "github.com/itsHenry35/gofakes3/xml"
+	xml "github.com/minio/xxml"
 )
 
 // GoFakeS3 implements HTTP handlers for processing S3 requests and returning
@@ -44,8 +41,8 @@ type GoFakeS3 struct {
 	log                     Logger
 
 	// simple v4 signature
+	mu         sync.RWMutex // protects vAuthPair map only
 	v4AuthPair map[string]string
-	mu         sync.RWMutex
 }
 
 // New creates a new GoFakeS3 using the supplied Backend. Backends are pluggable.
@@ -123,8 +120,9 @@ func (g *GoFakeS3) DelAuthKeys(p []string) {
 func (g *GoFakeS3) authMiddleware(handler http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, rq *http.Request) {
 		g.mu.RLock()
-		defer g.mu.RUnlock()
-		if len(g.v4AuthPair) > 0 {
+		haveAuth := len(g.v4AuthPair) > 0
+		g.mu.RUnlock()
+		if haveAuth {
 			result := signature.V4SignVerify(rq)
 
 			if result == signature.ErrUnsupportAlgorithm {
@@ -243,38 +241,16 @@ func (g *GoFakeS3) listBucket(bucketName string, w http.ResponseWriter, r *http.
 	}
 
 	isVersion2 := q.Get("list-type") == "2"
+	encodingType := q.Get("encoding-type")
+	useUrlEncoding := encodingType == "url"
+	if !useUrlEncoding && encodingType != "" {
+		return ErrInvalidArgument
+	}
 
 	g.log.Print(LogInfo, "bucketname:", bucketName, "prefix:", prefix, "page:", fmt.Sprintf("%+v", page))
 
 	ctx := r.Context()
 	objects, err := g.storage.ListBucket(ctx, bucketName, &prefix, page)
-	log.Debugf("objects.Contents: %v, prefix: %v", objects.Contents, prefix)
-
-	if strings.HasSuffix(prefix.Prefix, "/") {
-		hasPrefixSelf := false
-		if objects.Contents != nil {
-			for _, v := range objects.Contents {
-				if v.Key == prefix.Prefix {
-					hasPrefixSelf = true
-					break
-				}
-			}
-		}
-
-		if !hasPrefixSelf {
-			log.Debugf("objects.Contents not has prefix self, need to add it, prefix: %v", prefix)
-			objects.Contents = append(objects.Contents, &Content{
-				Key:          prefix.Prefix,
-				LastModified: NewContentTime(time.Time{}),
-				ETag:         "",
-				Size:         0,
-				StorageClass: StorageStandard,
-				Owner:        nil,
-			})
-		}
-		log.Debugf("objects.Contents: %v", objects.Contents)
-	}
-
 	if err != nil {
 		if err == ErrInternalPageNotImplemented && !g.failOnUnimplementedPage {
 			// We have observed (though not yet confirmed) that simple clients
@@ -301,8 +277,19 @@ func (g *GoFakeS3) listBucket(bucketName string, w http.ResponseWriter, r *http.
 		Contents:       objects.Contents,
 		IsTruncated:    objects.IsTruncated,
 		Delimiter:      prefix.Delimiter,
-		Prefix:         URLEncode(prefix.Prefix),
+		Prefix:         prefix.Prefix,
 		MaxKeys:        page.MaxKeys,
+		EncodingType:   encodingType,
+	}
+	if useUrlEncoding {
+		base.Prefix = URLEncode(base.Prefix)
+		for i := range base.CommonPrefixes {
+			prefix := &base.CommonPrefixes[i]
+			prefix.Prefix = URLEncode(prefix.Prefix)
+		}
+		for _, content := range base.Contents {
+			content.Key = URLEncode(content.Key)
+		}
 	}
 
 	if !isVersion2 {
@@ -324,7 +311,6 @@ func (g *GoFakeS3) listBucket(bucketName string, w http.ResponseWriter, r *http.
 			KeyCount:             int64(len(objects.CommonPrefixes) + len(objects.Contents)),
 			StartAfter:           q.Get("start-after"),
 			ContinuationToken:    q.Get("continuation-token"),
-			EncodingType:         "url",
 		}
 		if objects.NextMarker != "" {
 			// We are just cheating with these continuation tokens; they're just the NextMarker
@@ -1156,7 +1142,7 @@ func (g *GoFakeS3) xmlEncoder(w http.ResponseWriter) *xml.Encoder {
 }
 
 func (g *GoFakeS3) xmlDecodeBody(rdr io.ReadCloser, into interface{}) (err error) {
-	body, err := ioutil.ReadAll(rdr)
+	body, err := io.ReadAll(rdr)
 	defer CheckClose(rdr, &err)
 	if err != nil {
 		return err

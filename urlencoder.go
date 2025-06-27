@@ -1,4 +1,4 @@
-// Package s3 implements a fake s3 server for rclone
+// Package s3 implements a fake s3 server for itsHenry35
 package gofakes3
 
 // From: minio/cmd/api-utils.go

@@ -5,9 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
 // This test proved that version-id-marker requires key-marker to be passed
@@ -49,7 +48,7 @@ func (s S300004ListVersionsWithVersionMarkerButNoKeyMarker) Run(ctx *Context) er
 	for _, key := range keys {
 		for i := 0; i < 2; i++ {
 			body := ctx.RandBytes(32)
-			vrs, err := client.PutObject(&s3.PutObjectInput{
+			vrs, err := client.PutObject(ctx.Context, &s3.PutObjectInput{
 				Key:    aws.String(key),
 				Bucket: bucket,
 				Body:   bytes.NewReader(body),
@@ -57,12 +56,12 @@ func (s S300004ListVersionsWithVersionMarkerButNoKeyMarker) Run(ctx *Context) er
 			if err != nil {
 				return err
 			}
-			versions[key] = append(versions[key], aws.StringValue(vrs.VersionId))
+			versions[key] = append(versions[key], aws.ToString(vrs.VersionId))
 		}
 	}
 
 	{ // Sanity check version length
-		rs, err := client.ListObjectVersions(&s3.ListObjectVersionsInput{
+		rs, err := client.ListObjectVersions(ctx.Context, &s3.ListObjectVersionsInput{
 			Bucket: bucket,
 			Prefix: aws.String(prefix),
 		})
@@ -74,49 +73,49 @@ func (s S300004ListVersionsWithVersionMarkerButNoKeyMarker) Run(ctx *Context) er
 		}
 	}
 
-	page1, err := client.ListObjectVersions(&s3.ListObjectVersionsInput{
+	page1, err := client.ListObjectVersions(ctx.Context, &s3.ListObjectVersionsInput{
 		Bucket:  bucket,
 		Prefix:  aws.String(prefix),
-		MaxKeys: aws.Int64(1),
+		MaxKeys: aws.Int32(1),
 	})
 	if err != nil {
 		return err
 	}
 
 	// Passing no key marker, which should be an error:
-	if _, err := client.ListObjectVersions(&s3.ListObjectVersionsInput{
+	if _, err := client.ListObjectVersions(ctx.Context, &s3.ListObjectVersionsInput{
 		Bucket:          bucket,
 		Prefix:          aws.String(prefix),
-		MaxKeys:         aws.Int64(1),
+		MaxKeys:         aws.Int32(1),
 		VersionIdMarker: page1.NextVersionIdMarker,
 	}); err == nil {
 		return fmt.Errorf("expected error")
-	} else if serr, ok := err.(awserr.RequestFailure); !ok {
+	} else if serr, ok := err.(awsError); !ok {
 		return fmt.Errorf("unexpected error %v", serr)
-	} else if serr.Code() != "InvalidArgument" || !strings.Contains(serr.Message(), "version-id marker cannot be specified without a key marker") {
+	} else if serr.Code() != "InvalidArgument" || !strings.Contains(err.Error(), "version-id marker cannot be specified without a key marker") {
 		return fmt.Errorf("unexpected error %v", serr)
 	}
 
 	// Passing key marker but empty version, which should fail:
-	if _, err := client.ListObjectVersions(&s3.ListObjectVersionsInput{
+	if _, err := client.ListObjectVersions(ctx.Context, &s3.ListObjectVersionsInput{
 		Bucket:          bucket,
 		Prefix:          aws.String(prefix),
-		MaxKeys:         aws.Int64(1),
+		MaxKeys:         aws.Int32(1),
 		KeyMarker:       page1.NextKeyMarker,
 		VersionIdMarker: aws.String(""),
 	}); err == nil {
 		return fmt.Errorf("expected error")
-	} else if serr, ok := err.(awserr.RequestFailure); !ok {
+	} else if serr, ok := err.(awsError); !ok {
 		return fmt.Errorf("unexpected error %v", serr)
-	} else if serr.Code() != "InvalidArgument" || !strings.Contains(serr.Message(), "version-id marker cannot be empty") {
+	} else if serr.Code() != "InvalidArgument" || !strings.Contains(err.Error(), "version-id marker cannot be empty") {
 		return fmt.Errorf("unexpected error %v", serr)
 	}
 
 	// Passing version-id-marker but empty key-marker returns the first page for some reason:
-	resultPage, err := client.ListObjectVersions(&s3.ListObjectVersionsInput{
+	resultPage, err := client.ListObjectVersions(ctx.Context, &s3.ListObjectVersionsInput{
 		Bucket:          bucket,
 		Prefix:          aws.String(prefix),
-		MaxKeys:         aws.Int64(1),
+		MaxKeys:         aws.Int32(1),
 		KeyMarker:       aws.String(""),
 		VersionIdMarker: page1.NextVersionIdMarker,
 	})
@@ -124,16 +123,16 @@ func (s S300004ListVersionsWithVersionMarkerButNoKeyMarker) Run(ctx *Context) er
 		return fmt.Errorf("unexpected error %v", err)
 	}
 
-	if aws.StringValue(resultPage.Versions[0].VersionId) != aws.StringValue(page1.Versions[0].VersionId) {
+	if aws.ToString(resultPage.Versions[0].VersionId) != aws.ToString(page1.Versions[0].VersionId) {
 		return fmt.Errorf("unexpected version id %s, expected %s",
-			aws.StringValue(resultPage.Versions[0].VersionId), aws.StringValue(page1.Versions[0].VersionId))
+			aws.ToString(resultPage.Versions[0].VersionId), aws.ToString(page1.Versions[0].VersionId))
 	}
 
 	// Passing key marker but no version, which should be fine:
-	if _, err := client.ListObjectVersions(&s3.ListObjectVersionsInput{
+	if _, err := client.ListObjectVersions(ctx.Context, &s3.ListObjectVersionsInput{
 		Bucket:    bucket,
 		Prefix:    aws.String(prefix),
-		MaxKeys:   aws.Int64(1),
+		MaxKeys:   aws.Int32(1),
 		KeyMarker: page1.NextKeyMarker,
 	}); err != nil {
 		return fmt.Errorf("unexpected error")

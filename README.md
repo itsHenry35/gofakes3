@@ -5,8 +5,8 @@
 [![GoDoc](https://pkg.go.dev/badge/github.com/itsHenry35/gofakes3.svg)](https://pkg.go.dev/github.com/itsHenry35/gofakes3)
 
 This is a fork of [johannesboyne/gofakes3](https://github.com/johannesboyne/gofakes3)
-mainly for use implementing the [rclone serves3](https://rclone.org/commands/rclone_serve_s3/) command in
-[rclone/rclone](https://github.com/rclone/rclone).
+mainly for use implementing the [itsHenry35 serves3](https://itsHenry35.org/commands/itsHenry35_serve_s3/) command in
+[itsHenry35/itsHenry35](https://github.com/itsHenry35/itsHenry35).
 
 Notable differences:
 

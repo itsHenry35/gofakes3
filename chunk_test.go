@@ -3,7 +3,6 @@ package gofakes3
 import (
 	"errors"
 	"io"
-	"io/ioutil"
 	"strings"
 	"testing"
 
@@ -30,7 +29,7 @@ func TestChunkedUploadSuccess(t *testing.T) {
 
 	inner := strings.NewReader(payload)
 	chunkedReader := newChunkedReader(inner)
-	buf, err := ioutil.ReadAll(chunkedReader)
+	buf, err := io.ReadAll(chunkedReader)
 	assert.Equal(t, nil, err)
 	assert.Equal(t, string(buf), strings.Repeat("a", 65536+1024))
 }
@@ -43,7 +42,7 @@ func (errReader) Read(p []byte) (n int, err error) {
 
 func TestChunkedUploadFail(t *testing.T) {
 	chunkedReader := newChunkedReader(errReader{})
-	buf, err := ioutil.ReadAll(chunkedReader)
+	buf, err := io.ReadAll(chunkedReader)
 	assert.Equal(t, errors.New("err"), err)
 	assert.Equal(t, "", string(buf))
 
@@ -51,7 +50,7 @@ func TestChunkedUploadFail(t *testing.T) {
 		strings.NewReader("10000;chunk-signature=ad80c730a21e5b8d04586a2213dd63b9a0e99e0e2307b0ade35a65485a288648\r\n"),
 		errReader{},
 	))
-	buf, err = ioutil.ReadAll(chunkedReader)
+	buf, err = io.ReadAll(chunkedReader)
 	assert.Equal(t, errors.New("err"), err)
 	assert.Equal(t, "", string(buf))
 
@@ -59,7 +58,7 @@ func TestChunkedUploadFail(t *testing.T) {
 		strings.NewReader("incorrect_data"),
 		errReader{},
 	))
-	buf, err = ioutil.ReadAll(chunkedReader)
+	buf, err = io.ReadAll(chunkedReader)
 	assert.Equal(t, errors.New("expected integer"), err)
 	assert.Equal(t, "", string(buf))
 
@@ -69,7 +68,7 @@ func TestChunkedUploadFail(t *testing.T) {
 		strings.NewReader(payload),
 		errReader{},
 	))
-	buf, err = ioutil.ReadAll(chunkedReader)
+	buf, err = io.ReadAll(chunkedReader)
 	assert.Equal(t, errors.New("err"), err)
 	assert.Equal(t, strings.Repeat("a", 200), string(buf))
 

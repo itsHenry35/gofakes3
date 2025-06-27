@@ -3,9 +3,9 @@ package gofakes3_test
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"mime/multipart"
 	"net/http"
 	"net/http/httputil"
@@ -16,10 +16,11 @@ import (
 	"testing"
 	"time"
 
-	xml "github.com/itsHenry35/gofakes3/xml"
+	xml "github.com/minio/xxml"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/itsHenry35/gofakes3"
 	"github.com/itsHenry35/gofakes3/s3mem"
 )
@@ -28,27 +29,28 @@ var mockR, _ = http.NewRequest(http.MethodGet, "http://localhost:9000", nil)
 
 func TestCreateBucket(t *testing.T) {
 	//@TODO(jb): implement them for sanity reasons
+	ctx := context.Background()
 
 	ts := newTestServer(t)
 	defer ts.Close()
 
 	svc := ts.s3Client()
 
-	ts.OKAll(svc.CreateBucket(&s3.CreateBucketInput{
+	ts.OKAll(svc.CreateBucket(ctx, &s3.CreateBucketInput{
 		Bucket: aws.String("testbucket"),
 	}))
-	ts.OKAll(svc.HeadBucket(&s3.HeadBucketInput{
+	ts.OKAll(svc.HeadBucket(ctx, &s3.HeadBucketInput{
 		Bucket: aws.String("testbucket"),
 	}))
-	ts.OKAll(svc.PutObject(&s3.PutObjectInput{
+	ts.OKAll(svc.PutObject(ctx, &s3.PutObjectInput{
 		Bucket: aws.String("testbucket"),
 		Key:    aws.String("ObjectKey"),
 		Body:   bytes.NewReader([]byte(`{"test": "foo"}`)),
-		Metadata: map[string]*string{
-			"Key": aws.String("MetadataValue"),
+		Metadata: map[string]string{
+			"Key": "MetadataValue",
 		},
 	}))
-	ts.OKAll(svc.GetObject(&s3.GetObjectInput{
+	ts.OKAll(svc.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String("testbucket"),
 		Key:    aws.String("ObjectKey"),
 	}))
@@ -57,11 +59,12 @@ func TestCreateBucket(t *testing.T) {
 func TestListBuckets(t *testing.T) {
 	ts := newTestServer(t, withoutInitialBuckets())
 	defer ts.Close()
+	ctx := context.Background()
 	svc := ts.s3Client()
 
 	assertBuckets := func(expected ...string) {
 		t.Helper()
-		rs, err := svc.ListBuckets(&s3.ListBucketsInput{})
+		rs, err := svc.ListBuckets(ctx, &s3.ListBucketsInput{})
 		ts.OK(err)
 
 		var found []string
@@ -78,7 +81,7 @@ func TestListBuckets(t *testing.T) {
 
 	assertBucketTime := func(bucket string, created time.Time) {
 		t.Helper()
-		rs, err := svc.ListBuckets(&s3.ListBucketsInput{})
+		rs, err := svc.ListBuckets(ctx, &s3.ListBucketsInput{})
 		ts.OK(err)
 
 		for _, v := range rs.Buckets {
@@ -115,9 +118,10 @@ func TestListBuckets(t *testing.T) {
 func TestListBucketObjectSize(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.Close()
+	ctx := context.Background()
 	svc := ts.s3Client()
 
-	_, err := svc.PutObject(&s3.PutObjectInput{
+	_, err := svc.PutObject(ctx, &s3.PutObjectInput{
 		Bucket: aws.String(defaultBucket),
 		Key:    aws.String("object"),
 		Body:   bytes.NewReader([]byte("hello")), // size 5
@@ -128,7 +132,7 @@ func TestListBucketObjectSize(t *testing.T) {
 		Bucket: aws.String(defaultBucket),
 	}
 
-	output, err := svc.ListObjectsV2(&listInput) // there should be only 1 object
+	output, err := svc.ListObjectsV2(ctx, &listInput) // there should be only 1 object
 	ts.OK(err)
 
 	if *output.Contents[0].Size != int64(5) {
@@ -139,9 +143,10 @@ func TestListBucketObjectSize(t *testing.T) {
 func TestCreateObject(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.Close()
+	ctx := context.Background()
 	svc := ts.s3Client()
 
-	out, err := svc.PutObject(&s3.PutObjectInput{
+	out, err := svc.PutObject(ctx, &s3.PutObjectInput{
 		Bucket: aws.String(defaultBucket),
 		Key:    aws.String("object"),
 		Body:   bytes.NewReader([]byte("hello")),
@@ -163,12 +168,13 @@ func TestCreateObjectMetadataSizeLimit(t *testing.T) {
 		gofakes3.WithMetadataSizeLimit(1),
 	))
 	defer ts.Close()
+	ctx := context.Background()
 	svc := ts.s3Client()
 
-	_, err := svc.PutObject(&s3.PutObjectInput{
+	_, err := svc.PutObject(ctx, &s3.PutObjectInput{
 		Bucket:   aws.String(defaultBucket),
 		Key:      aws.String("object"),
-		Metadata: map[string]*string{"too": aws.String("big")},
+		Metadata: map[string]string{"too": "big"},
 		Body:     bytes.NewReader([]byte("hello")),
 	})
 	if !hasErrorCode(err, gofakes3.ErrMetadataTooLarge) {
@@ -179,10 +185,11 @@ func TestCreateObjectMetadataSizeLimit(t *testing.T) {
 func TestCreateObjectMD5(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.Close()
+	ctx := context.Background()
 	svc := ts.s3Client()
 
 	{ // md5 is valid base64 but does not match content:
-		_, err := svc.PutObject(&s3.PutObjectInput{
+		_, err := svc.PutObject(ctx, &s3.PutObjectInput{
 			Bucket:     aws.String(defaultBucket),
 			Key:        aws.String("invalid"),
 			Body:       bytes.NewReader([]byte("hello")),
@@ -194,7 +201,7 @@ func TestCreateObjectMD5(t *testing.T) {
 	}
 
 	{ // md5 is invalid base64:
-		_, err := svc.PutObject(&s3.PutObjectInput{
+		_, err := svc.PutObject(ctx, &s3.PutObjectInput{
 			Bucket:     aws.String(defaultBucket),
 			Key:        aws.String("invalid"),
 			Body:       bytes.NewReader([]byte("hello")),
@@ -263,9 +270,10 @@ func TestCreateObjectWithInvalidContentLength(t *testing.T) {
 func TestCreateObjectWithContentDisposition(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.Close()
+	ctx := context.Background()
 	svc := ts.s3Client()
 
-	_, err := svc.PutObject(&s3.PutObjectInput{
+	_, err := svc.PutObject(ctx, &s3.PutObjectInput{
 		Bucket:             aws.String(defaultBucket),
 		Key:                aws.String("object"),
 		Body:               bytes.NewReader([]byte("hello")),
@@ -273,7 +281,7 @@ func TestCreateObjectWithContentDisposition(t *testing.T) {
 	})
 	ts.OK(err)
 
-	obj, err := svc.GetObject(&s3.GetObjectInput{
+	obj, err := svc.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(defaultBucket),
 		Key:    aws.String("object"),
 	})
@@ -289,62 +297,63 @@ func TestCreateObjectWithContentDisposition(t *testing.T) {
 func TestCreateObjectMetadataAndObjectTagging(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.Close()
+	ctx := context.Background()
 	svc := ts.s3Client()
 
-	_, err := svc.PutObject(&s3.PutObjectInput{
+	_, err := svc.PutObject(ctx, &s3.PutObjectInput{
 		Bucket: aws.String(defaultBucket),
 		Key:    aws.String("object"),
 		Body:   bytes.NewReader([]byte("hello")),
-		Metadata: map[string]*string{
-			"Test": aws.String("test"),
+		Metadata: map[string]string{
+			"test": "test",
 		},
 	})
 	ts.OK(err)
 
-	_, err = svc.GetObject(&s3.GetObjectInput{
+	_, err = svc.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(defaultBucket),
 		Key:    aws.String("object"),
 	})
 	ts.OK(err)
 
-	head, err := svc.HeadObject(&s3.HeadObjectInput{
+	head, err := svc.HeadObject(ctx, &s3.HeadObjectInput{
 		Bucket: aws.String(defaultBucket),
 		Key:    aws.String("object"),
 	})
 	ts.OK(err)
 
-	if head.Metadata["Test"] == nil {
+	if head.Metadata["test"] == "" {
 		t.Fatalf("missing metadata: %+v", head.Metadata)
 	}
-	if *head.Metadata["Test"] != "test" {
+	if head.Metadata["test"] != "test" {
 		t.Fatal("wrong metadata key")
 	}
 
-	_, err = svc.PutObjectTagging(&s3.PutObjectTaggingInput{
+	_, err = svc.PutObjectTagging(ctx, &s3.PutObjectTaggingInput{
 		Bucket: aws.String(defaultBucket),
 		Key:    aws.String("object"),
-		Tagging: &s3.Tagging{
-			TagSet: []*s3.Tag{
+		Tagging: &types.Tagging{
+			TagSet: []types.Tag{
 				{Key: aws.String("Tag-Test"), Value: aws.String("test")},
 			},
 		},
 	})
 	ts.OK(err)
 
-	head, err = svc.HeadObject(&s3.HeadObjectInput{
+	head, err = svc.HeadObject(ctx, &s3.HeadObjectInput{
 		Bucket: aws.String(defaultBucket),
 		Key:    aws.String("object"),
 	})
 	ts.OK(err)
 
-	if head.Metadata["Test"] == nil {
+	if head.Metadata["test"] == "" {
 		t.Fatalf("missing metadata after PutObjectTagging: %+v", head.Metadata)
 	}
-	if *head.Metadata["Test"] != "test" {
+	if head.Metadata["test"] != "test" {
 		t.Fatal("wrong metadata key")
 	}
 
-	result, err := svc.GetObjectTagging(&s3.GetObjectTaggingInput{
+	result, err := svc.GetObjectTagging(ctx, &s3.GetObjectTaggingInput{
 		Bucket: aws.String(defaultBucket),
 		Key:    aws.String("object"),
 	})
@@ -358,6 +367,7 @@ func TestCreateObjectMetadataAndObjectTagging(t *testing.T) {
 func TestCopyObject(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.Close()
+	ctx := context.Background()
 	svc := ts.s3Client()
 
 	srcMeta := map[string]string{
@@ -367,13 +377,13 @@ func TestCopyObject(t *testing.T) {
 	}
 	ts.backendPutString(defaultBucket, "src-key", srcMeta, "content")
 
-	out, err := svc.CopyObject(&s3.CopyObjectInput{
+	out, err := svc.CopyObject(ctx, &s3.CopyObjectInput{
 		Bucket:     aws.String(defaultBucket),
 		Key:        aws.String("dst-key"),
 		CopySource: aws.String("/" + defaultBucket + "/src-key"),
-		Metadata: map[string]*string{
-			"Two":   aws.String("dst"),
-			"Three": aws.String("dst"),
+		Metadata: map[string]string{
+			"Two":   "dst",
+			"Three": "dst",
 		},
 	})
 	ts.OK(err)
@@ -391,7 +401,7 @@ func TestCopyObject(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	data, err := ioutil.ReadAll(obj.Contents)
+	data, err := io.ReadAll(obj.Contents)
 	ts.OK(err)
 
 	if string(data) != "content" {
@@ -414,6 +424,7 @@ func TestCopyObject(t *testing.T) {
 func TestCopyObjectWithSpecialChars(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.Close()
+	ctx := context.Background()
 	svc := ts.s3Client()
 
 	srcMeta := map[string]string{
@@ -423,21 +434,21 @@ func TestCopyObjectWithSpecialChars(t *testing.T) {
 	content := "contents"
 	ts.backendPutString(defaultBucket, srcKey, srcMeta, content)
 	copySource := "/" + defaultBucket + "/" + url.QueryEscape(srcKey)
-	_, err := svc.CopyObject(&s3.CopyObjectInput{
+	_, err := svc.CopyObject(ctx, &s3.CopyObjectInput{
 		Bucket:     aws.String(defaultBucket),
 		Key:        aws.String("dst-key"),
 		CopySource: aws.String(copySource),
 	})
 	ts.OK(err)
 
-	obj, err := svc.GetObject(&s3.GetObjectInput{
+	obj, err := svc.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(defaultBucket),
 		Key:    aws.String(srcKey),
 	})
 	if err != nil {
 		t.Fatalf("object not found with key %v", srcKey)
 	}
-	objContent, err := ioutil.ReadAll(obj.Body)
+	objContent, err := io.ReadAll(obj.Body)
 	ts.OK(err)
 	if !bytes.Equal([]byte(content), objContent) {
 		ts.Fatalf("object contents are different %v!=%v", content, objContent)
@@ -447,6 +458,7 @@ func TestCopyObjectWithSpecialChars(t *testing.T) {
 func TestCopyObjectWithSpecialCharsEscapedInvalied(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.Close()
+	ctx := context.Background()
 	svc := ts.s3Client()
 
 	srcMeta := map[string]string{
@@ -456,7 +468,7 @@ func TestCopyObjectWithSpecialCharsEscapedInvalied(t *testing.T) {
 	content := "contents"
 	ts.backendPutString(defaultBucket, srcKey, srcMeta, content)
 	copySource := "/" + defaultBucket + "/src%2key" //invalid encoding
-	_, err := svc.CopyObject(&s3.CopyObjectInput{
+	_, err := svc.CopyObject(ctx, &s3.CopyObjectInput{
 		Bucket:     aws.String(defaultBucket),
 		Key:        aws.String("dst-key"),
 		CopySource: aws.String(copySource),
@@ -467,13 +479,15 @@ func TestCopyObjectWithSpecialCharsEscapedInvalied(t *testing.T) {
 }
 
 func TestDeleteBucket(t *testing.T) {
+	ctx := context.Background()
+
 	t.Run("delete-empty", func(t *testing.T) {
 		ts := newTestServer(t, withoutInitialBuckets())
 		defer ts.Close()
 		svc := ts.s3Client()
 
 		ts.backendCreateBucket("test")
-		ts.OKAll(svc.DeleteBucket(&s3.DeleteBucketInput{
+		ts.OKAll(svc.DeleteBucket(ctx, &s3.DeleteBucketInput{
 			Bucket: aws.String("test"),
 		}))
 	})
@@ -485,7 +499,7 @@ func TestDeleteBucket(t *testing.T) {
 
 		ts.backendCreateBucket("test")
 		ts.backendPutString("test", "test", nil, "test")
-		_, err := svc.DeleteBucket(&s3.DeleteBucketInput{
+		_, err := svc.DeleteBucket(ctx, &s3.DeleteBucketInput{
 			Bucket: aws.String("test"),
 		})
 		if !hasErrorCode(err, gofakes3.ErrBucketNotEmpty) {
@@ -495,6 +509,8 @@ func TestDeleteBucket(t *testing.T) {
 }
 
 func TestDeleteMulti(t *testing.T) {
+	ctx := context.Background()
+
 	deletedKeys := func(rs *s3.DeleteObjectsOutput) []string {
 		deleted := make([]string, len(rs.Deleted))
 		for idx, del := range rs.Deleted {
@@ -521,10 +537,10 @@ func TestDeleteMulti(t *testing.T) {
 		ts.backendPutString(defaultBucket, "bar", nil, "two")
 		ts.backendPutString(defaultBucket, "baz", nil, "three")
 
-		rs, err := svc.DeleteObjects(&s3.DeleteObjectsInput{
+		rs, err := svc.DeleteObjects(ctx, &s3.DeleteObjectsInput{
 			Bucket: aws.String(defaultBucket),
-			Delete: &s3.Delete{
-				Objects: []*s3.ObjectIdentifier{
+			Delete: &types.Delete{
+				Objects: []types.ObjectIdentifier{
 					{Key: aws.String("foo")},
 				},
 			},
@@ -543,10 +559,10 @@ func TestDeleteMulti(t *testing.T) {
 		ts.backendPutString(defaultBucket, "bar", nil, "two")
 		ts.backendPutString(defaultBucket, "baz", nil, "three")
 
-		rs, err := svc.DeleteObjects(&s3.DeleteObjectsInput{
+		rs, err := svc.DeleteObjects(ctx, &s3.DeleteObjectsInput{
 			Bucket: aws.String(defaultBucket),
-			Delete: &s3.Delete{
-				Objects: []*s3.ObjectIdentifier{
+			Delete: &types.Delete{
+				Objects: []types.ObjectIdentifier{
 					{Key: aws.String("bar")},
 					{Key: aws.String("foo")},
 				},
@@ -561,27 +577,29 @@ func TestDeleteMulti(t *testing.T) {
 func TestGetBucketLocation(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.Close()
+	ctx := context.Background()
 	svc := ts.s3Client()
 
 	ts.backendPutString(defaultBucket, "foo", nil, "one")
 
-	out, err := svc.GetBucketLocation(&s3.GetBucketLocationInput{
+	out, err := svc.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
 		Bucket: aws.String(defaultBucket),
 	})
 	if err != nil {
 		t.Fatal("get-bucket-location-failed", err)
 	}
 
-	if out.LocationConstraint != nil {
-		t.Fatal("location-constraint-not-empty", *out.LocationConstraint)
+	if out.LocationConstraint != "" {
+		t.Fatal("location-constraint-not-empty", out.LocationConstraint)
 	}
 }
 
 func TestGetObjectRange(t *testing.T) {
+	ctx := context.Background()
 	assertRange := func(ts *testServer, key string, hdr string, expected []byte, fail bool) {
 		ts.Helper()
 		svc := ts.s3Client()
-		obj, err := svc.GetObject(&s3.GetObjectInput{
+		obj, err := svc.GetObject(ctx, &s3.GetObjectInput{
 			Bucket: aws.String(defaultBucket),
 			Key:    aws.String(key),
 			Range:  aws.String(hdr),
@@ -598,7 +616,7 @@ func TestGetObjectRange(t *testing.T) {
 				}
 			}()
 
-			out, err := ioutil.ReadAll(obj.Body)
+			out, err := io.ReadAll(obj.Body)
 			ts.OK(err)
 			if !bytes.Equal(expected, out) {
 				ts.Fatal("range failed", hdr, err)
@@ -642,9 +660,10 @@ func TestGetObjectRange(t *testing.T) {
 }
 
 func TestGetObjectRangeInvalid(t *testing.T) {
+	ctx := context.Background()
 	assertRangeInvalid := func(ts *testServer, key string, hdr string) {
 		svc := ts.s3Client()
-		_, err := svc.GetObject(&s3.GetObjectInput{
+		_, err := svc.GetObject(ctx, &s3.GetObjectInput{
 			Bucket: aws.String(defaultBucket),
 			Key:    aws.String(key),
 			Range:  aws.String(hdr),
@@ -673,6 +692,7 @@ func TestGetObjectRangeInvalid(t *testing.T) {
 }
 
 func TestGetObjectIfNoneMatch(t *testing.T) {
+	ctx := context.Background()
 	objectKey := "foo"
 	assertModified := func(ts *testServer, ifNoneMatch string, shouldModify bool) {
 		svc := ts.s3Client()
@@ -684,7 +704,7 @@ func TestGetObjectIfNoneMatch(t *testing.T) {
 			input.IfNoneMatch = aws.String(ifNoneMatch)
 		}
 
-		_, err := svc.GetObject(&input)
+		_, err := svc.GetObject(ctx, &input)
 		modified := true
 		if err != nil {
 			if !s3HasErrorCode(err, gofakes3.ErrNotModified) {
@@ -806,26 +826,27 @@ func TestCreateObjectBrowserUpload(t *testing.T) {
 }
 
 func TestVersioning(t *testing.T) {
+	ctx := context.Background()
 	assertVersioning := func(ts *testServer, mfa string, status string) {
 		ts.Helper()
 		svc := ts.s3Client()
-		bv, err := svc.GetBucketVersioning(&s3.GetBucketVersioningInput{Bucket: aws.String(defaultBucket)})
+		bv, err := svc.GetBucketVersioning(ctx, &s3.GetBucketVersioningInput{Bucket: aws.String(defaultBucket)})
 		ts.OK(err)
-		if aws.StringValue(bv.MFADelete) != mfa {
+		if bv.MFADelete != types.MFADeleteStatus(mfa) {
 			ts.Fatal("unexpected MFADelete")
 		}
-		if aws.StringValue(bv.Status) != status {
-			ts.Fatalf("unexpected Status %q, expected %q", aws.StringValue(bv.Status), status)
+		if bv.Status != types.BucketVersioningStatus(status) {
+			ts.Fatalf("unexpected Status %q, expected %q", bv.Status, status)
 		}
 	}
 
 	setVersioning := func(ts *testServer, status gofakes3.VersioningStatus) {
 		ts.Helper()
 		svc := ts.s3Client()
-		ts.OKAll(svc.PutBucketVersioning(&s3.PutBucketVersioningInput{
+		ts.OKAll(svc.PutBucketVersioning(ctx, &s3.PutBucketVersioningInput{
 			Bucket: aws.String(defaultBucket),
-			VersioningConfiguration: &s3.VersioningConfiguration{
-				Status: aws.String(string(status)),
+			VersioningConfiguration: &types.VersioningConfiguration{
+				Status: types.BucketVersioningStatus(status),
 			},
 		}))
 	}
@@ -875,10 +896,10 @@ func TestVersioning(t *testing.T) {
 		defer ts.Close()
 
 		svc := ts.s3Client()
-		_, err := svc.PutBucketVersioning(&s3.PutBucketVersioningInput{
+		_, err := svc.PutBucketVersioning(ctx, &s3.PutBucketVersioningInput{
 			Bucket: aws.String(defaultBucket),
-			VersioningConfiguration: &s3.VersioningConfiguration{
-				Status: aws.String("Enabled"),
+			VersioningConfiguration: &types.VersioningConfiguration{
+				Status: "Enabled",
 			},
 		})
 		if !hasErrorCode(err, gofakes3.ErrNotImplemented) {
@@ -888,17 +909,18 @@ func TestVersioning(t *testing.T) {
 }
 
 func TestObjectVersions(t *testing.T) {
+	ctx := context.Background()
 	create := func(ts *testServer, bucket, key string, contents []byte, version string) {
 		ts.Helper()
 		svc := ts.s3Client()
-		out, err := svc.PutObject(&s3.PutObjectInput{
+		out, err := svc.PutObject(ctx, &s3.PutObjectInput{
 			Bucket: aws.String(bucket),
 			Key:    aws.String(key),
 			Body:   bytes.NewReader(contents),
 		})
 		ts.OK(err)
-		if aws.StringValue(out.VersionId) != version {
-			t.Fatal("version ID mismatch. found:", aws.StringValue(out.VersionId), "expected:", version)
+		if aws.ToString(out.VersionId) != version {
+			t.Fatal("version ID mismatch. found:", aws.ToString(out.VersionId), "expected:", version)
 		}
 	}
 
@@ -912,7 +934,7 @@ func TestObjectVersions(t *testing.T) {
 		if version != "" {
 			input.VersionId = aws.String(version)
 		}
-		out, err := svc.GetObject(input)
+		out, err := svc.GetObject(ctx, input)
 		ts.OK(err)
 		defer func() {
 			err := out.Body.Close()
@@ -920,7 +942,7 @@ func TestObjectVersions(t *testing.T) {
 				ts.Error(err)
 			}
 		}()
-		bts, err := ioutil.ReadAll(out.Body)
+		bts, err := io.ReadAll(out.Body)
 		ts.OK(err)
 		if !bytes.Equal(bts, contents) {
 			ts.Fatal("body mismatch. found:", string(bts), "expected:", string(contents))
@@ -937,7 +959,7 @@ func TestObjectVersions(t *testing.T) {
 		if version != "" {
 			input.VersionId = aws.String(version)
 		}
-		ts.OKAll(svc.DeleteObject(input))
+		ts.OKAll(svc.DeleteObject(ctx, input))
 	}
 
 	deleteDirect := func(ts *testServer, bucket, key, version string) {
@@ -947,25 +969,25 @@ func TestObjectVersions(t *testing.T) {
 			Bucket: aws.String(bucket),
 			Key:    aws.String(key),
 		}
-		out, err := svc.DeleteObject(input)
+		out, err := svc.DeleteObject(ctx, input)
 		ts.OK(err)
-		if aws.StringValue(out.VersionId) != version {
-			t.Fatal("version ID mismatch. found:", aws.StringValue(out.VersionId), "expected:", version)
+		if aws.ToString(out.VersionId) != version {
+			t.Fatal("version ID mismatch. found:", aws.ToString(out.VersionId), "expected:", version)
 		}
 	}
 
 	list := func(ts *testServer, bucket string, versions ...string) {
 		ts.Helper()
 		svc := ts.s3Client()
-		out, err := svc.ListObjectVersions(&s3.ListObjectVersionsInput{Bucket: aws.String(bucket)})
+		out, err := svc.ListObjectVersions(ctx, &s3.ListObjectVersionsInput{Bucket: aws.String(bucket)})
 		ts.OK(err)
 
 		var found []string
 		for _, ver := range out.Versions {
-			found = append(found, aws.StringValue(ver.VersionId))
+			found = append(found, aws.ToString(ver.VersionId))
 		}
 		for _, ver := range out.DeleteMarkers {
-			found = append(found, aws.StringValue(ver.VersionId))
+			found = append(found, aws.ToString(ver.VersionId))
 		}
 
 		// Unfortunately, the S3 client API destroys the order of Versions and
@@ -1028,7 +1050,7 @@ func TestObjectVersions(t *testing.T) {
 		list(ts, defaultBucket, v1, v2, v3)
 
 		svc := ts.s3Client()
-		_, err := svc.GetObject(&s3.GetObjectInput{
+		_, err := svc.GetObject(ctx, &s3.GetObjectInput{
 			Bucket: aws.String(defaultBucket),
 			Key:    aws.String("object"),
 		})
@@ -1050,9 +1072,9 @@ func TestObjectVersions(t *testing.T) {
 }
 
 func TestListBucketPages(t *testing.T) {
-	createData := func(ts *testServer, prefix string, n int64) []string {
+	createData := func(ts *testServer, prefix string, n int32) []string {
 		keys := make([]string, n)
-		for i := int64(0); i < n; i++ {
+		for i := int32(0); i < n; i++ {
 			key := fmt.Sprintf("%s%d", prefix, i)
 			ts.backendPutString(defaultBucket, key, nil, fmt.Sprintf("body-%d", i))
 			keys[i] = key
@@ -1063,7 +1085,7 @@ func TestListBucketPages(t *testing.T) {
 	assertKeys := func(ts *testServer, rs *listBucketResult, keys ...string) {
 		found := make([]string, len(rs.Contents))
 		for i := 0; i < len(rs.Contents); i++ {
-			found[i] = aws.StringValue(rs.Contents[i].Key)
+			found[i] = aws.ToString(rs.Contents[i].Key)
 		}
 		if !reflect.DeepEqual(found, keys) {
 			t.Fatal("key mismatch:", keys, "!=", found)
@@ -1071,7 +1093,7 @@ func TestListBucketPages(t *testing.T) {
 	}
 
 	for idx, tc := range []struct {
-		keys, pageKeys int64
+		keys, pageKeys int32
 	}{
 		{9, 2},
 		{8, 3},

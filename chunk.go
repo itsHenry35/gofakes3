@@ -3,7 +3,6 @@ package gofakes3
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 )
 
 type chunkedReader struct {
@@ -42,7 +41,7 @@ func (r *chunkedReader) Read(p []byte) (n int, err error) {
 				r.notFirstChunk = true
 			} else {
 				// skip last chunk's b"\r\n"
-				_, err = io.CopyN(ioutil.Discard, r.inner, 2)
+				_, err = io.CopyN(io.Discard, r.inner, 2)
 				if err != nil {
 					return n, err
 				}
@@ -54,7 +53,7 @@ func (r *chunkedReader) Read(p []byte) (n int, err error) {
 				return n, err
 			}
 			r.chunkRemain = chunkSize
-			_, err = io.CopyN(ioutil.Discard, r.inner, 16+64+2) // "chunk-signature=" + sizeOfHash + "\r\n"
+			_, err = io.CopyN(io.Discard, r.inner, 16+64+2) // "chunk-signature=" + sizeOfHash + "\r\n"
 			if err != nil {
 				return n, err
 			}

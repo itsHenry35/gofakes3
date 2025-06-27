@@ -2,6 +2,7 @@ package signature_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/hex"
 	"fmt"
 	"math/rand"
@@ -10,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	v4 "github.com/aws/aws-sdk-go/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	v4signer "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/itsHenry35/gofakes3/signature"
 )
 
@@ -38,6 +39,7 @@ func RandString(n int) string {
 }
 
 func TestSignatureMatch(t *testing.T) {
+	ctx := context.Background()
 	testCases := []struct {
 		name           string
 		useQueryString bool
@@ -58,10 +60,14 @@ func TestSignatureMatch(t *testing.T) {
 			ak := RandString(32)
 			sk := RandString(64)
 			region := RandString(16)
+			bodyHash := "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 
-			creds := credentials.NewStaticCredentials(ak, sk, "")
+			creds := aws.Credentials{
+				AccessKeyID:     ak,
+				SecretAccessKey: sk,
+			}
 			signature.ReloadKeys(map[string]string{ak: sk})
-			signer := v4.NewSigner(creds)
+			signer := v4signer.NewSigner()
 
 			req, err := http.NewRequest(http.MethodPost, "https://s3-endpoint.example.com/bin", Body)
 			if err != nil {
@@ -77,10 +83,10 @@ func TestSignatureMatch(t *testing.T) {
 					"X-Amz-Expires":       []string{"900"},
 					"X-Amz-SignedHeaders": []string{"host"},
 				}.Encode()
-				_, err = signer.Sign(req, Body, serviceS3, region, time.Now())
+				err = signer.SignHTTP(ctx, creds, req, bodyHash, serviceS3, region, time.Now())
 			} else {
 				// For header-based authentication
-				_, err = signer.Sign(req, Body, serviceS3, region, time.Now())
+				err = signer.SignHTTP(ctx, creds, req, bodyHash, serviceS3, region, time.Now())
 			}
 
 			if err != nil {
@@ -95,15 +101,19 @@ func TestSignatureMatch(t *testing.T) {
 }
 
 func TestUnsignedPayload(t *testing.T) {
+	ctx := context.Background()
 	Body := bytes.NewReader([]byte("test data"))
 
 	ak := RandString(32)
 	sk := RandString(64)
 	region := RandString(16)
 
-	creds := credentials.NewStaticCredentials(ak, sk, "")
+	credentials := aws.Credentials{
+		AccessKeyID:     ak,
+		SecretAccessKey: sk,
+	}
 	signature.ReloadKeys(map[string]string{ak: sk})
-	signer := v4.NewSigner(creds)
+	signer := v4signer.NewSigner()
 
 	req, err := http.NewRequest(http.MethodPost, "https://s3-endpoint.example.com/bin", Body)
 	if err != nil {
@@ -112,7 +122,7 @@ func TestUnsignedPayload(t *testing.T) {
 
 	req.Header.Set("X-Amz-Content-Sha256", unsignedPayload)
 
-	_, err = signer.Sign(req, Body, serviceS3, region, time.Now())
+	err = signer.SignHTTP(ctx, credentials, req, unsignedPayload, serviceS3, region, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,6 +133,7 @@ func TestUnsignedPayload(t *testing.T) {
 }
 
 func TestCheckExpiration(t *testing.T) {
+	ctx := context.Background()
 	originalTimeNow := signature.TimeNow
 	defer func() { signature.TimeNow = originalTimeNow }()
 
@@ -187,13 +198,17 @@ func TestCheckExpiration(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			Body := bytes.NewReader(nil)
+			bodyHash := "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 			ak := RandString(32)
 			sk := RandString(64)
 			region := RandString(16)
+			creds := aws.Credentials{
+				AccessKeyID:     ak,
+				SecretAccessKey: sk,
+			}
 
-			creds := credentials.NewStaticCredentials(ak, sk, "")
 			signature.ReloadKeys(map[string]string{ak: sk})
-			signer := v4.NewSigner(creds)
+			signer := v4signer.NewSigner()
 
 			req, err := http.NewRequest(http.MethodPost, "https://s3-endpoint.example.com/bin", Body)
 			if err != nil {
@@ -217,7 +232,7 @@ func TestCheckExpiration(t *testing.T) {
 				req.Header.Set("X-Amz-Date", now.Format(iso8601Format))
 			}
 
-			_, err = signer.Sign(req, Body, serviceS3, region, now)
+			err = signer.SignHTTP(ctx, creds, req, bodyHash, serviceS3, region, now)
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	xml "github.com/itsHenry35/gofakes3/xml"
+	xml "github.com/minio/xxml"
 )
 
 type Storage struct {
@@ -204,6 +204,8 @@ type ListBucketResultBase struct {
 
 	CommonPrefixes []CommonPrefix `xml:"CommonPrefixes,omitempty"`
 	Contents       []*Content     `xml:"Contents"`
+
+	EncodingType string `xml:"EncodingType,omitempty"`
 }
 
 type GetBucketLocation struct {
@@ -248,8 +250,7 @@ type ListBucketResultV2 struct {
 	NextContinuationToken string `xml:"NextContinuationToken,omitempty"`
 
 	// If StartAfter was sent with the request, it is included in the response.
-	StartAfter   string `xml:"StartAfter,omitempty"`
-	EncodingType string `xml:"EncodingType,omitempty"`
+	StartAfter string `xml:"StartAfter,omitempty"`
 }
 
 type DeleteMarker struct {

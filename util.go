@@ -2,7 +2,6 @@ package gofakes3
 
 import (
 	"io"
-	"io/ioutil"
 	"strconv"
 )
 
@@ -27,7 +26,7 @@ func parseClampedInt(in string, defaultValue, min, max int64) (int64, error) {
 	return v, nil
 }
 
-// ReadAll is a fakeS3-centric replacement for ioutil.ReadAll(), for use when
+// ReadAll is a fakeS3-centric replacement for io.ReadAll(), for use when
 // the size of the result is known ahead of time. It is considerably faster to
 // preallocate the entire slice than to allow growslice to be triggered
 // repeatedly, especially with larger buffers.
@@ -48,7 +47,7 @@ func ReadAll(r io.Reader, size int64) (b []byte, err error) {
 		return nil, ErrIncompleteBody
 	}
 
-	if extra, err := ioutil.ReadAll(r); err != nil {
+	if extra, err := io.ReadAll(r); err != nil {
 		return nil, err
 	} else if len(extra) > 0 {
 		return nil, ErrIncompleteBody
