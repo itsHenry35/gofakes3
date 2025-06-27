@@ -16,12 +16,12 @@ import (
 	"testing"
 	"time"
 
-	xml "github.com/alist-org/gofakes3/xml"
+	xml "github.com/itsHenry35/gofakes3/xml"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/alist-org/gofakes3"
-	"github.com/alist-org/gofakes3/s3mem"
+	"github.com/itsHenry35/gofakes3"
+	"github.com/itsHenry35/gofakes3/s3mem"
 )
 
 var mockR, _ = http.NewRequest(http.MethodGet, "http://localhost:9000", nil)

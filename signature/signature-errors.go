@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"net/http"
 
-	"github.com/alist-org/gofakes3/xml"
+	"github.com/itsHenry35/gofakes3/xml"
 )
 
 // ErrorCode is code[int] of APIError

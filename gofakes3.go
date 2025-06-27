@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"io"
 	"io/ioutil"
 	"math"
@@ -18,8 +17,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/alist-org/gofakes3/signature"
-	xml "github.com/alist-org/gofakes3/xml"
+	log "github.com/sirupsen/logrus"
+
+	"github.com/itsHenry35/gofakes3/signature"
+	xml "github.com/itsHenry35/gofakes3/xml"
 )
 
 // GoFakeS3 implements HTTP handlers for processing S3 requests and returning

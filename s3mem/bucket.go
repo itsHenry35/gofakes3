@@ -5,8 +5,8 @@ import (
 	"io"
 	"time"
 
-	"github.com/alist-org/gofakes3"
-	"github.com/alist-org/gofakes3/internal/s3io"
+	"github.com/itsHenry35/gofakes3"
+	"github.com/itsHenry35/gofakes3/internal/s3io"
 	"github.com/ryszard/goskiplist/skiplist"
 )
 

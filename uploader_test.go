@@ -3,8 +3,8 @@ package gofakes3_test
 import (
 	"testing"
 
-	"github.com/alist-org/gofakes3"
 	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/itsHenry35/gofakes3"
 )
 
 func TestMultipartUpload(t *testing.T) {
